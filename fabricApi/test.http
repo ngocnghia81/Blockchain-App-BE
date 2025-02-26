@@ -1,0 +1,16 @@
+GET  http://localhost:3000/queryAllCars
+
+###lấy danh tính admin
+GET http://localhost:3000/identity/admin
+
+###Đăng ký user
+POST http://localhost:3000/register/haolam123
+Content-Type:  : application/json
+
+{
+    "co": "abc",
+    "ou": "ABC",
+    "country": "VietNam",
+    "state": "success",
+    "locality": "ABC"
+}

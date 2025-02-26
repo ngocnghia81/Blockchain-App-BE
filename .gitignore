@@ -1,0 +1,5 @@
+/fabricApi/node_modules
+
+/fabricApi/package_lock.json
+
+.env
