@@ -11,7 +11,7 @@ async function Login(username, password) {
             path.join(__dirname, "../wallet")
         );
 
-        // Kiểm tra user trong DB theo username
+        // Lấy thông tin user từ database
         const getUserFromDB = () => {
             return new Promise((resolve, reject) => {
                 const sql = "SELECT * FROM users WHERE username = ?";
@@ -22,35 +22,31 @@ async function Login(username, password) {
             });
         };
 
-        // Lấy kết quả từ database
         const result = await getUserFromDB();
-        console.log(result);
-
         if (result.length === 0) {
             return { success: false, message: "User not found in DB" };
         }
 
         const userRecord = result[0];
-        console.log(userRecord);
-        console.log(userRecord.enrollment_secret);
-
-        // Kiểm tra mật khẩu (phải khớp với enrollmentSecret)
         if (password !== userRecord.enrollment_secret) {
             return { success: false, message: "Invalid credentials" };
         }
 
-        // Kiểm tra xem identity đã tồn tại trong wallet chưa
+        // Kiểm tra xem user có mã PIN chưa
+        if (!userRecord.pin_code) {
+            return {
+                success: false,
+                message: "Pin code required. Please create a new PIN.",
+            };
+        }
 
-        console.log("Trước khi get: " + username);
+        // Kiểm tra xem identity đã tồn tại trong wallet chưa
         const identity = await wallet.get(username);
-        console.log(identity);
         if (identity) {
             return {
                 success: true,
                 message: "Login successful",
-                data: {
-                    username: username,
-                },
+                data: { username: username },
             };
         }
 
@@ -72,7 +68,6 @@ async function Login(username, password) {
             data: {
                 username: userRecord.username,
                 certificate: enrollment.certificate,
-                // Các thông tin khác nếu cần trả về
             },
         };
     } catch (error) {
