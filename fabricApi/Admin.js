@@ -66,3 +66,4 @@ async function enrollAdmin() {
 // }
 
 // module.exports = {GetIdentity};
+module.exports = { enrollAdmin };

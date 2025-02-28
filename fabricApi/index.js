@@ -1,5 +1,5 @@
 const express = require("express");
-const { GetIdentity } = require("./Admin");
+const { GetIdentity, enrollAdmin } = require("./Admin");
 const { Register } = require("./User");
 const { Login } = require("./controllers/authController");
 
@@ -86,3 +86,4 @@ app.post("/login", async (req, res) => {
 // Khởi động server
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`API running on port ${PORT}`));
+// enrollAdmin();
