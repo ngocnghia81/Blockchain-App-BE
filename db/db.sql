@@ -2,7 +2,7 @@ CREATE DATABASE BlockChain;
 
 CREATE TABLE users (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    username VARCHAR(255) NOT NULL,
+    username VARCHAR(255) NOT NULL UNIQUE,
     email VARCHAR(255) NOT NULL UNIQUE, 
     commonName VARCHAR(255),
     organization VARCHAR(255),
@@ -15,6 +15,6 @@ CREATE TABLE users (
     private_key BLOB,
     enrollment_secret VARCHAR(255),
     citizen_id VARCHAR(20) NOT NULL UNIQUE,
-    pin_code VARCHAR(10) DEFAULT NULL,
-    UNIQUE(username)
+    pin_code CHAR(6) DEFAULT NULL,
+    CHECK (pin_code REGEXP '^[0-9]{6}$' OR pin_code IS NULL) 
 );
