@@ -14,7 +14,7 @@ CREATE TABLE users (
     public_key BLOB,
     private_key BLOB,
     enrollment_secret VARCHAR(255),
-    citizen_id VARCHAR(20) NOT NULL UNIQUE,
+    citizen_id VARCHAR(12) NOT NULL UNIQUE,
     pin_code CHAR(6) DEFAULT NULL,
     CHECK (pin_code REGEXP '^[0-9]{6}$' OR pin_code IS NULL) 
 );

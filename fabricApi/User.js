@@ -1,12 +1,13 @@
 const { Wallets } = require("fabric-network");
-const fabric_server = require("fabric-ca-client");
+const FabricCAServer = require("fabric-ca-client");
 const path = require("path");
 const db = require("./config/connectToDB.js");
-const { log } = require("console");
 
 async function Register(req, res) {
     const {
         username,
+        email,
+        citizen_id,
         commonName,
         organization,
         organizationalUnit,
@@ -18,21 +19,42 @@ async function Register(req, res) {
     let wallet;
 
     try {
-        const ca = new fabric_server(process.env.fabric_url);
+        const ca = new FabricCAServer(process.env.fabric_url);
         wallet = await Wallets.newFileSystemWallet(
             path.join(__dirname, "wallet")
         );
 
+        // Kiểm tra username, email, citizen_id đã tồn tại chưa
+        const checkUserSQL =
+            "SELECT * FROM users WHERE username = ? OR email = ? OR citizen_id = ?";
+        const existingUser = await new Promise((resolve, reject) => {
+            db.query(
+                checkUserSQL,
+                [username, email, citizen_id],
+                (err, result) => {
+                    if (err) reject(err);
+                    else resolve(result);
+                }
+            );
+        });
+
+        if (existingUser.length > 0) {
+            return res.status(409).json({
+                success: false,
+                message: "Username, email, or citizen_id already exists",
+            });
+        }
+
+        // Kiểm tra user đã tồn tại trong Wallet chưa
         const userExists = await wallet.get(username);
         if (userExists) {
-            console.log("User already exists in wallet.");
             return res.status(409).json({
                 success: false,
                 message: "User already exists in wallet",
             });
         }
 
-        // Lấy admin từ Wallet
+        // Kiểm tra admin đã tồn tại trong Wallet chưa
         const adminIdentity = await wallet.get("admin");
         if (!adminIdentity) {
             return res.status(500).json({
@@ -44,26 +66,23 @@ async function Register(req, res) {
         const provider = wallet
             .getProviderRegistry()
             .getProvider(adminIdentity.type);
-        const adminuser = await provider.getUserContext(adminIdentity, "admin");
+        const adminUser = await provider.getUserContext(adminIdentity, "admin");
 
-        // Kiểm tra xem Identity đã tồn tại trong Fabric CA chưa
+        // Kiểm tra user đã tồn tại trong Fabric CA chưa
         try {
-            const identityInfo = await ca.getIdentity(username, adminuser);
-            if (identityInfo) {
-                console.log("Identity already registered in CA.");
-                return res.status(409).json({
-                    success: false,
-                    message: "Identity already registered in CA.",
-                });
-            }
+            await ca.getIdentity(username, adminUser);
+            return res.status(409).json({
+                success: false,
+                message: "Identity already registered in CA.",
+            });
         } catch (error) {
             console.log(
                 "Identity not found in CA, proceeding with registration..."
             );
         }
 
-        // Đăng ký Identity
-        const user = await ca.register(
+        // Đăng ký user trong Fabric CA
+        const enrollmentSecret = await ca.register(
             {
                 enrollmentID: username,
                 affiliation: "org1.department1",
@@ -77,21 +96,14 @@ async function Register(req, res) {
                     { name: "lc", value: locality },
                 ],
             },
-            adminuser
+            adminUser
         );
 
-        // Enroll User
-        const enrollmentSecret = user; //  secret
-        console.log(enrollmentSecret);
-
+        // Enroll user để lấy certificate và key
         const EnrollUser = await ca.enroll({
             enrollmentID: username,
             enrollmentSecret: enrollmentSecret,
         });
-
-        console.log("EnrollUser:", EnrollUser);
-        console.log("Certificate:", EnrollUser.certificate);
-        console.log("Private Key:", EnrollUser.key.toBytes());
 
         const userIdentity = {
             credentials: {
@@ -102,33 +114,25 @@ async function Register(req, res) {
             type: "X.509",
         };
 
+        // Lưu user vào Wallet
         await wallet.put(username, userIdentity);
 
-        const identity = await wallet.get(username);
-        console.log(identity);
+        // Chuyển đổi key sang Buffer để lưu vào database
+        const publicKey = Buffer.from(EnrollUser.key.getPublicKey().toBytes());
+        const privateKey = Buffer.from(EnrollUser.key.toBytes());
 
-        if (identity) {
-            console.log("Identity successfully added to wallet");
-        } else {
-            console.log("Failed to add identity to wallet");
-        }
-        console.log(`User ${username} has been added to the wallet.`);
+        // Lưu user vào database
+        const insertSQL = `
+            INSERT INTO users (username, email, citizen_id, commonName, organization, organizationalUnit, country, state, locality, certificate, public_key, private_key, enrollment_secret) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
-        // Insert user data into DB, bao gồm cả username
-        const sql =
-            "INSERT INTO users (username, commonName, organization, organizationalUnit, country, state, locality, certificate, public_key, private_key, enrollment_secret) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-
-        const publicKey = EnrollUser.key.getPublicKey().toBytes();
-        const privateKey = EnrollUser.key.toBytes();
-
-        console.log("public_key:", publicKey, "private_key:", privateKey);
-
-        // Đặt câu lệnh query vào một Promise để có thể catch lỗi
-        const dbResult = await new Promise((resolve, reject) => {
+        await new Promise((resolve, reject) => {
             db.query(
-                sql,
+                insertSQL,
                 [
                     username,
+                    email,
+                    citizen_id,
                     commonName,
                     organization,
                     organizationalUnit,
@@ -141,35 +145,26 @@ async function Register(req, res) {
                     enrollmentSecret,
                 ],
                 (err, result) => {
-                    if (err) {
-                        reject(err); // Bắt lỗi nếu có lỗi
-                    } else {
-                        resolve(result); // Trả về kết quả nếu thành công
-                    }
+                    if (err) reject(err);
+                    else resolve(result);
                 }
             );
         });
 
-        console.log("User register success:", dbResult);
-
         return res.status(200).json({
             success: true,
-            message: "Register user successfully",
-            enrollmentSecret, // Trả secret về cho client (hoặc chỉ lưu trong DB)
-            result: dbResult,
+            message: "User registered successfully",
+            enrollmentSecret,
         });
     } catch (error) {
-        // Nếu có lỗi, xóa user khỏi wallet để không giữ lại thông tin không hợp lệ
         if (wallet) {
-            console.log("Rolling back by deleting user from wallet...");
             try {
                 await wallet.remove(username);
-            } catch (error) {
-                console.error("Failed to remove user from wallet:", error);
+            } catch (err) {
+                console.error("Failed to remove user from wallet:", err);
             }
         }
 
-        console.error("Error:", error);
         return res.status(500).json({
             success: false,
             message: error.message,
