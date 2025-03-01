@@ -65,7 +65,7 @@ exports.getPin = async (req, res) => {
         return res.status(200).json({
             success: true,
             message: "PIN retrieved successfully.",
-            pin: rows[0].PIN,
+            pin: rows[0].pin_code,
         });
     } catch (error) {
         console.error("Error retrieving PIN:", error);
