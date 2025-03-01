@@ -5,10 +5,8 @@ const path = require("path");
 const db = require("../config/connectToDB");
 
 require("dotenv").config();
-
 async function Login(username, password) {
     try {
-        // Khởi tạo Fabric CA client và wallet
         const ca = new FabricCAServices(process.env.fabric_url);
         const wallet = await Wallets.newFileSystemWallet(
             path.join(__dirname, "../wallet")
@@ -27,27 +25,36 @@ async function Login(username, password) {
 
         const result = await getUserFromDB();
         if (result.length === 0) {
-            return { success: false, message: "User not found in DB" };
+            return {
+                success: false,
+                code: "USER_NOT_FOUND",
+                message: "User not found in DB",
+            };
         }
 
         const userRecord = result[0];
         if (password !== userRecord.enrollment_secret) {
-            return { success: false, message: "Invalid credentials" };
+            return {
+                success: false,
+                code: "INVALID_CREDENTIALS",
+                message: "Invalid credentials",
+            };
         }
 
-        // Kiểm tra xem user có mã PIN chưa
         if (!userRecord.pin_code) {
             return {
                 success: false,
+                code: "PIN_REQUIRED",
                 message: "Pin code required. Please create a new PIN.",
             };
         }
 
-        // Kiểm tra xem identity đã tồn tại trong wallet chưa
+        // Kiểm tra identity trong wallet
         const identity = await wallet.get(username);
         if (identity) {
             return {
                 success: true,
+                code: "LOGIN_SUCCESS",
                 message: "Login successful",
                 data: { username: username },
             };
@@ -67,6 +74,7 @@ async function Login(username, password) {
 
         return {
             success: true,
+            code: "LOGIN_SUCCESS",
             message: "Login successful",
             data: {
                 username: userRecord.username,
@@ -77,6 +85,7 @@ async function Login(username, password) {
         console.error("Error:", error);
         return {
             success: false,
+            code: "SERVER_ERROR",
             message: "Server error",
         };
     }
