@@ -1,7 +1,86 @@
 const { Wallets } = require("fabric-network");
-const FabricCAServer = require("fabric-ca-client");
+const FabricCAServices = require("fabric-ca-client");
 const path = require("path");
-const db = require("./config/connectToDB.js");
+
+const db = require("../config/connectToDB");
+
+require("dotenv").config();
+
+async function Login(username, password) {
+    try {
+        // Khởi tạo Fabric CA client và wallet
+        const ca = new FabricCAServices(process.env.fabric_url);
+        const wallet = await Wallets.newFileSystemWallet(
+            path.join(__dirname, "../wallet")
+        );
+
+        // Lấy thông tin user từ database
+        const getUserFromDB = () => {
+            return new Promise((resolve, reject) => {
+                const sql = "SELECT * FROM users WHERE username = ?";
+                db.query(sql, [username], (err, result) => {
+                    if (err) reject(err);
+                    else resolve(result);
+                });
+            });
+        };
+
+        const result = await getUserFromDB();
+        if (result.length === 0) {
+            return { success: false, message: "User not found in DB" };
+        }
+
+        const userRecord = result[0];
+        if (password !== userRecord.enrollment_secret) {
+            return { success: false, message: "Invalid credentials" };
+        }
+
+        // Kiểm tra xem user có mã PIN chưa
+        if (!userRecord.pin_code) {
+            return {
+                success: false,
+                message: "Pin code required. Please create a new PIN.",
+            };
+        }
+
+        // Kiểm tra xem identity đã tồn tại trong wallet chưa
+        const identity = await wallet.get(username);
+        if (identity) {
+            return {
+                success: true,
+                message: "Login successful",
+                data: { username: username },
+            };
+        }
+
+        // Enroll lại user
+        const enrollment = await ca.enroll({
+            enrollmentID: username,
+            enrollmentSecret: password,
+        });
+
+        // Thêm identity vào wallet
+        await wallet.put(username, {
+            certificate: enrollment.certificate,
+            privateKey: enrollment.key.toBytes(),
+        });
+
+        return {
+            success: true,
+            message: "Login successful",
+            data: {
+                username: userRecord.username,
+                certificate: enrollment.certificate,
+            },
+        };
+    } catch (error) {
+        console.error("Error:", error);
+        return {
+            success: false,
+            message: "Server error",
+        };
+    }
+}
 
 async function Register(req, res) {
     const {
@@ -17,12 +96,21 @@ async function Register(req, res) {
     } = req.body;
 
     let wallet;
+    let walletPath;
 
     try {
-        const ca = new FabricCAServer(process.env.fabric_url);
-        wallet = await Wallets.newFileSystemWallet(
-            path.join(__dirname, "wallet")
-        );
+        console.log("Fabric CA URL:", process.env.fabric_url);
+
+        const ca = new FabricCAServices(process.env.fabric_url);
+        console.log(ca);
+
+        // wallet = await Wallets.newFileSystemWallet(
+        //     path.join(__dirname, "./wallet")
+        // );
+
+        walletPath = path.resolve(__dirname, "../wallet");
+        console.log(`Wallet path: ${walletPath}`); // Debug xem có đúng không
+        wallet = await Wallets.newFileSystemWallet(walletPath);
 
         // Kiểm tra username, email, citizen_id đã tồn tại chưa
         const checkUserSQL =
@@ -121,6 +209,13 @@ async function Register(req, res) {
         const publicKey = Buffer.from(EnrollUser.key.getPublicKey().toBytes());
         const privateKey = Buffer.from(EnrollUser.key.toBytes());
 
+        console.log({
+            EnrollUser,
+            publicKey,
+            privateKey,
+            enrollmentSecret,
+        });
+
         // Lưu user vào database
         const insertSQL = `
             INSERT INTO users (username, email, citizen_id, commonName, organization, organizationalUnit, country, state, locality, certificate, public_key, private_key, enrollment_secret) 
@@ -159,7 +254,16 @@ async function Register(req, res) {
     } catch (error) {
         if (wallet) {
             try {
-                await wallet.remove(username);
+                const fs = require("fs");
+                const userPath = path.join(walletPath, username + ".id");
+
+                if (fs.existsSync(userPath)) {
+                    await wallet.remove(username);
+                } else {
+                    console.log(
+                        "User does not exist in wallet, skipping removal."
+                    );
+                }
             } catch (err) {
                 console.error("Failed to remove user from wallet:", err);
             }
@@ -172,4 +276,4 @@ async function Register(req, res) {
     }
 }
 
-module.exports = { Register };
+module.exports = { Login, Register };
