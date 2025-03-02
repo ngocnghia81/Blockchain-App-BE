@@ -90,8 +90,7 @@ async function Login(username, password) {
         };
     }
 }
-
-async function Register(req, res) {
+async function Register(req) {
     const {
         username,
         email,
@@ -109,16 +108,9 @@ async function Register(req, res) {
 
     try {
         console.log("Fabric CA URL:", process.env.fabric_url);
-
         const ca = new FabricCAServices(process.env.fabric_url);
-        console.log(ca);
-
-        // wallet = await Wallets.newFileSystemWallet(
-        //     path.join(__dirname, "./wallet")
-        // );
-
         walletPath = path.resolve(__dirname, "../wallet");
-        console.log(`Wallet path: ${walletPath}`); // Debug xem có đúng không
+        console.log(`Wallet path: ${walletPath}`);
         wallet = await Wallets.newFileSystemWallet(walletPath);
 
         // Kiểm tra username, email, citizen_id đã tồn tại chưa
@@ -136,28 +128,28 @@ async function Register(req, res) {
         });
 
         if (existingUser.length > 0) {
-            return res.status(409).json({
+            return {
                 success: false,
                 message: "Username, email, or citizen_id already exists",
-            });
+            };
         }
 
         // Kiểm tra user đã tồn tại trong Wallet chưa
         const userExists = await wallet.get(username);
         if (userExists) {
-            return res.status(409).json({
+            return {
                 success: false,
                 message: "User already exists in wallet",
-            });
+            };
         }
 
         // Kiểm tra admin đã tồn tại trong Wallet chưa
         const adminIdentity = await wallet.get("admin");
         if (!adminIdentity) {
-            return res.status(500).json({
+            return {
                 success: false,
                 message: "Admin identity not found",
-            });
+            };
         }
 
         const provider = wallet
@@ -168,10 +160,10 @@ async function Register(req, res) {
         // Kiểm tra user đã tồn tại trong Fabric CA chưa
         try {
             await ca.getIdentity(username, adminUser);
-            return res.status(409).json({
+            return {
                 success: false,
                 message: "Identity already registered in CA.",
-            });
+            };
         } catch (error) {
             console.log(
                 "Identity not found in CA, proceeding with registration..."
@@ -214,17 +206,6 @@ async function Register(req, res) {
         // Lưu user vào Wallet
         await wallet.put(username, userIdentity);
 
-        // Chuyển đổi key sang Buffer để lưu vào database
-        const publicKey = Buffer.from(EnrollUser.key.getPublicKey().toBytes());
-        const privateKey = Buffer.from(EnrollUser.key.toBytes());
-
-        console.log({
-            EnrollUser,
-            publicKey,
-            privateKey,
-            enrollmentSecret,
-        });
-
         // Lưu user vào database
         const insertSQL = `
             INSERT INTO users (username, email, citizen_id, common_name, organization, organizational_unit, country, state, locality, certificate, public_key, private_key, enrollment_secret) 
@@ -244,8 +225,8 @@ async function Register(req, res) {
                     state,
                     locality,
                     EnrollUser.certificate,
-                    publicKey,
-                    privateKey,
+                    EnrollUser.key.getPublicKey().toBytes(),
+                    EnrollUser.key.toBytes(),
                     enrollmentSecret,
                 ],
                 (err, result) => {
@@ -255,33 +236,17 @@ async function Register(req, res) {
             );
         });
 
-        return res.status(200).json({
+        return {
             success: true,
             message: "User registered successfully",
             enrollmentSecret,
-        });
+        };
     } catch (error) {
-        if (wallet) {
-            try {
-                const fs = require("fs");
-                const userPath = path.join(walletPath, username + ".id");
-
-                if (fs.existsSync(userPath)) {
-                    await wallet.remove(username);
-                } else {
-                    console.log(
-                        "User does not exist in wallet, skipping removal."
-                    );
-                }
-            } catch (err) {
-                console.error("Failed to remove user from wallet:", err);
-            }
-        }
-
-        return res.status(500).json({
+        console.error("Error:", error);
+        return {
             success: false,
             message: error.message,
-        });
+        };
     }
 }
 

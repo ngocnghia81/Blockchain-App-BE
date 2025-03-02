@@ -1,4 +1,5 @@
 const db = require("../config/connectToDB");
+const userService = require("../services/userService");
 
 // Hàm kiểm tra đầu vào
 const validateInput = (data) => typeof data === "string" && data.trim() !== "";
@@ -108,6 +109,46 @@ exports.updatePin = async (req, res) => {
         return res.status(500).json({
             success: false,
             message: "An error occurred while updating PIN.",
+        });
+    }
+};
+
+exports.getUsers = async (req, res) => {
+    try {
+        const data = await userService.getUsers();
+        console.log(data);
+        res.status(200).json(data);
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+exports.getUserDetail = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        if (!id) {
+            return res.status(400).json({
+                success: false,
+                message: "Thiếu ID người dùng",
+            });
+        }
+
+        const result = await userService.getUserDetail(id);
+
+        if (!result.users || result.users.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: "Không tìm thấy người dùng",
+            });
+        }
+
+        return res.status(200).json(result);
+    } catch (error) {
+        console.error("Lỗi khi lấy thông tin người dùng:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Lỗi server",
         });
     }
 };
