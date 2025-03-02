@@ -96,9 +96,9 @@ async function Register(req, res) {
         username,
         email,
         citizen_id,
-        commonName,
+        common_name,
         organization,
-        organizationalUnit,
+        organizational_unit,
         country,
         state,
         locality,
@@ -185,9 +185,9 @@ async function Register(req, res) {
                 affiliation: "org1.department1",
                 role: "client",
                 attrs: [
-                    { name: "co", value: commonName },
+                    { name: "co", value: common_name },
                     { name: "og", value: organization },
-                    { name: "ou", value: organizationalUnit },
+                    { name: "ou", value: organizational_unit },
                     { name: "ct", value: country },
                     { name: "st", value: state },
                     { name: "lc", value: locality },
@@ -227,7 +227,7 @@ async function Register(req, res) {
 
         // Lưu user vào database
         const insertSQL = `
-            INSERT INTO users (username, email, citizen_id, commonName, organization, organizationalUnit, country, state, locality, certificate, public_key, private_key, enrollment_secret) 
+            INSERT INTO users (username, email, citizen_id, common_name, organization, organizational_unit, country, state, locality, certificate, public_key, private_key, enrollment_secret) 
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
         await new Promise((resolve, reject) => {
@@ -237,9 +237,9 @@ async function Register(req, res) {
                     username,
                     email,
                     citizen_id,
-                    commonName,
+                    common_name,
                     organization,
-                    organizationalUnit,
+                    organizational_unit,
                     country,
                     state,
                     locality,
